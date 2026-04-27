@@ -9,72 +9,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <!-- Firebase v10 (modular, ESM via CDN) -->
-  <script type="module">
-    import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-    import {getFirestore, doc, onSnapshot, setDoc} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-
-    // ─────────────────────────────────────────────────────────────────
-    // STEP 1 OF SETUP: paste your Firebase config object here.
-    // Get it from: Firebase Console → Project Settings → Your apps → SDK setup
-    // It looks like the object below. Replace ALL the placeholder values.
-    // ─────────────────────────────────────────────────────────────────
-    const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyCRbD58q50zCMbAGmtxtUx2VupEPRCCVSQ",
-      authDomain: "board-game-50998.firebaseapp.com",
-      projectId: "board-game-50998",
-      storageBucket: "board-game-50998.firebasestorage.app",
-      messagingSenderId: "683652000172",
-      appId: "1:683652000172:web:6e0225c54fddcbb92b7209"
-    };
-
-    // ─────────────────────────────────────────────────────────────────
-    // STEP 2 OF SETUP: choose a room name. Everyone who opens the same
-    // URL with the same ROOM shares the same live workspace.
-    // Change this to anything — e.g. "speckled-band-2024"
-    // ─────────────────────────────────────────────────────────────────
-    const ROOM = "The Demise of the Teetotaller"
-
-    // ── Firebase init ─────────────────────────────────────────────────
-    const app = initializeApp(FIREBASE_CONFIG);
-    const db = getFirestore(app);
-    const docRef = doc(db, 'rooms', ROOM);
-
-    let remoteUpdateInProgress = false;
-    let saveTimer;
-
-    // Called by the app whenever local state changes
-    window._firebaseSave = function (state) {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(async () => {
-        try {
-          await setDoc(docRef, state);
-          showSaveBar('Synced ✓');
-        } catch (e) {
-          showSaveBar('Sync error — check config');
-          console.error(e);
-        }
-      }, 600);
-    };
-
-    // Listen for remote changes and push into the app
-    onSnapshot(docRef, (snap) => {
-      if (!snap.exists()) return;
-      remoteUpdateInProgress = true;
-      window._applyRemoteState(snap.data());
-      remoteUpdateInProgress = false;
-    });
-
-    window._isRemoteUpdate = () => remoteUpdateInProgress;
-
-    function showSaveBar(msg) {
-      const bar = document.getElementById('saveBar');
-      if (!bar) return;
-      bar.textContent = msg;
-      bar.classList.add('show');
-      setTimeout(() => bar.classList.remove('show'), 2000);
-    }
-  </script>
+  <!-- Firebase loaded at bottom of body as a single unified module -->
   <style>
     :root {
       --ink: #1a1208;
@@ -881,51 +816,82 @@
 
   <div class="save-bar" id="saveBar">Saved</div>
 
-  <script>
-    // ── State ──────────────────────────────────────────────────────────────────
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getFirestore, doc, onSnapshot, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // ── Firebase config ───────────────────────────────────────────────
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCRbD58q50zCMbAGmtxtUx2VupEPRCCVSQ",
+      authDomain: "board-game-50998.firebaseapp.com",
+      projectId: "board-game-50998",
+      storageBucket: "board-game-50998.firebasestorage.app",
+      messagingSenderId: "683652000172",
+      appId: "1:683652000172:web:6e0225c54fddcbb92b7209"
+    };
+    // Room name: letters, digits, hyphens only — no spaces
+    const ROOM = "demise-of-the-teetotaller";
+
+    const fbApp  = initializeApp(FIREBASE_CONFIG);
+    const db     = getFirestore(fbApp);
+    const docRef = doc(db, 'rooms', ROOM);
+
+    // ── State ─────────────────────────────────────────────────────────
     let state = {
       caseName: '', datePlayed: '', players: '', summary: '',
       accused: '', motive: '', ourScore: '', holmesScore: '', postNotes: '',
       suspects: [], clues: [], timeline: [], questions: [], leads: [], theories: []
     };
+    let remoteUpdateInProgress = false;
+    let saveTimer;
 
-    // Deep-merge remote state into local and re-render only changed lists
-    window._applyRemoteState = function (remote) {
-      const prev = JSON.stringify(state);
-      state = {...state, ...remote};
-      if (JSON.stringify(state) === prev) return; // no change
+    function save() {
+      if (remoteUpdateInProgress) return;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        try {
+          await setDoc(docRef, state);
+          showBar('Synced ✓');
+        } catch(e) {
+          showBar('Sync error: ' + e.code);
+          console.error(e);
+        }
+      }, 600);
+    }
 
-      // Re-bind simple fields without stealing focus
-      Object.keys(remote).forEach(k => {
+    function showBar(msg) {
+      const bar = document.getElementById('saveBar');
+      if (!bar) return;
+      bar.textContent = msg;
+      bar.classList.add('show');
+      setTimeout(() => bar.classList.remove('show'), 2200);
+    }
+
+    // Listen for remote changes and re-render
+    onSnapshot(docRef, (snap) => {
+      if (!snap.exists()) return;
+      remoteUpdateInProgress = true;
+      state = { ...state, ...snap.data() };
+      const SIMPLE = ['caseName','datePlayed','players','summary','accused','motive','ourScore','holmesScore','postNotes'];
+      SIMPLE.forEach(k => {
         const el = document.getElementById(k);
         if (el && el !== document.activeElement) el.value = state[k] || '';
       });
-
       renderSuspects(); renderClues(); renderTimeline();
       renderQuestions(); renderLeads(); renderTheories();
-
+      remoteUpdateInProgress = false;
       const banner = document.getElementById('syncBanner');
-      if (banner) {
-        banner.innerHTML = '🟢 <strong>Live sync active</strong> — all players see edits in real time. Room: <code style="color:var(--gold2)">' + (window._ROOM || '') + '</code>';
-      }
-    };
-
-    function save() {
-      if (window._isRemoteUpdate && window._isRemoteUpdate()) return;
-      if (window._firebaseSave) {
-        window._firebaseSave(state);
-      } else {
-        // Fallback: localStorage while Firebase not yet configured
-        try {localStorage.setItem('cd_workspace_v1', JSON.stringify(state));} catch (e) { }
-        const bar = document.getElementById('saveBar');
-        if (bar) {bar.textContent = 'Saved locally'; bar.classList.add('show'); setTimeout(() => bar.classList.remove('show'), 1500);}
-      }
-    }
+      if (banner) banner.innerHTML = '🟢 <strong>Live sync active</strong> — all players see edits in real time. Room: <code style="color:var(--gold2)">' + ROOM + '</code>';
+    }, (err) => {
+      showBar('Firestore error: ' + err.code);
+      console.error(err);
+    });
 
     // ── Section toggle ─────────────────────────────────────────────────────────
-    function toggleSection(id) {
+    // Must be on window so onclick="toggleSection(...)" in HTML can reach it
+    window.toggleSection = function(id) {
       document.getElementById(id).classList.toggle('collapsed');
-    }
+    };
 
     // ── Bind simple fields ─────────────────────────────────────────────────────
     function bindField(id, key) {
@@ -983,6 +949,8 @@
     function deleteSuspect(i) {state.suspects.splice(i, 1); renderSuspects(); save();}
     function updateSuspect(i, k, v) {state.suspects[i][k] = v; save();}
     function setStatus(i, s) {state.suspects[i].status = s; renderSuspects(); save();}
+    window.addSuspect = addSuspect; window.deleteSuspect = deleteSuspect;
+    window.updateSuspect = updateSuspect; window.setStatus = setStatus;
 
     // ── Clues ──────────────────────────────────────────────────────────────────
     const CLUE_TYPES = ['Physical', 'Testimony', 'Document', 'Alibi'];
@@ -996,7 +964,7 @@
       <button class="delete-btn" style="grid-column:1/-1;justify-self:end" onclick="deleteClue(${i})">✕</button>
       <div class="field-group">
         <span class="field-label">Type</span>
-        <select onchange="updateClue(${i},'type',this.value);renderClues()">
+        <select onchange="updateClue(${i},'type',this.value);window.renderClues()">
           ${CLUE_TYPES.map(t => `<option value="${t}" ${c.type === t ? 'selected' : ''}>${typeEmoji(t)} ${t}</option>`).join('')}
         </select>
       </div>
@@ -1016,6 +984,8 @@
     function addClue() {state.clues.push({id: uid(), type: 'Physical', desc: '', link: ''}); renderClues(); save();}
     function deleteClue(i) {state.clues.splice(i, 1); renderClues(); save();}
     function updateClue(i, k, v) {state.clues[i][k] = v; save();}
+    window.renderClues = renderClues;
+    window.addClue = addClue; window.deleteClue = deleteClue; window.updateClue = updateClue;
 
     // ── Timeline ───────────────────────────────────────────────────────────────
     function renderTimeline() {
@@ -1044,6 +1014,7 @@
     function addTimeline() {state.timeline.push({id: uid(), time: '', event: ''}); renderTimeline(); save();}
     function deleteTimeline(i) {state.timeline.splice(i, 1); renderTimeline(); save();}
     function updateTimeline(i, k, v) {state.timeline[i][k] = v; save();}
+    window.addTimeline = addTimeline; window.deleteTimeline = deleteTimeline; window.updateTimeline = updateTimeline;
 
     // ── Questions ──────────────────────────────────────────────────────────────
     function renderQuestions() {
@@ -1069,6 +1040,8 @@
     function deleteQuestion(i) {state.questions.splice(i, 1); renderQuestions(); save();}
     function updateQuestion(i, k, v) {state.questions[i][k] = v; save();}
     function toggleQuestion(i) {state.questions[i].resolved = !state.questions[i].resolved; renderQuestions(); save();}
+    window.addQuestion = addQuestion; window.deleteQuestion = deleteQuestion;
+    window.updateQuestion = updateQuestion; window.toggleQuestion = toggleQuestion;
 
     // ── Leads ──────────────────────────────────────────────────────────────────
     function renderLeads() {
@@ -1101,6 +1074,7 @@
     function addLead() {state.leads.push({id: uid(), location: '', finding: '', clues: ''}); renderLeads(); save();}
     function deleteLead(i) {state.leads.splice(i, 1); renderLeads(); save();}
     function updateLead(i, k, v) {state.leads[i][k] = v; save();}
+    window.addLead = addLead; window.deleteLead = deleteLead; window.updateLead = updateLead;
 
     // ── Theories ───────────────────────────────────────────────────────────────
     function renderTheories() {
@@ -1138,6 +1112,8 @@
     function deleteTheory(i) {state.theories.splice(i, 1); renderTheories(); save();}
     function updateTheory(i, k, v) {state.theories[i][k] = v; save();}
     function setConf(i, c) {state.theories[i].conf = c; renderTheories(); save();}
+    window.addTheory = addTheory; window.deleteTheory = deleteTheory;
+    window.updateTheory = updateTheory; window.setConf = setConf;
 
     // ── Util ───────────────────────────────────────────────────────────────────
     function esc(s) {return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');}
