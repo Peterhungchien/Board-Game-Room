@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consulting Detective — Case Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <!-- Firebase v10 (modular, ESM via CDN) -->
+  <script type="module">
+    import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import {getFirestore, doc, onSnapshot, setDoc} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // ─────────────────────────────────────────────────────────────────
+    // STEP 1 OF SETUP: paste your Firebase config object here.
+    // Get it from: Firebase Console → Project Settings → Your apps → SDK setup
+    // It looks like the object below. Replace ALL the placeholder values.
+    // ─────────────────────────────────────────────────────────────────
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCRbD58q50zCMbAGmtxtUx2VupEPRCCVSQ",
+      authDomain: "board-game-50998.firebaseapp.com",
+      projectId: "board-game-50998",
+      storageBucket: "board-game-50998.firebasestorage.app",
+      messagingSenderId: "683652000172",
+      appId: "1:683652000172:web:6e0225c54fddcbb92b7209"
+    };
+
+    // ─────────────────────────────────────────────────────────────────
+    // STEP 2 OF SETUP: choose a room name. Everyone who opens the same
+    // URL with the same ROOM shares the same live workspace.
+    // Change this to anything — e.g. "speckled-band-2024"
+    // ─────────────────────────────────────────────────────────────────
+    const ROOM = "The Demise of the Teetotaller"
+
+    // ── Firebase init ─────────────────────────────────────────────────
+    const app = initializeApp(FIREBASE_CONFIG);
+    const db = getFirestore(app);
+    const docRef = doc(db, 'rooms', ROOM);
+
+    let remoteUpdateInProgress = false;
+    let saveTimer;
+
+    // Called by the app whenever local state changes
+    window._firebaseSave = function (state) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        try {
+          await setDoc(docRef, state);
+          showSaveBar('Synced ✓');
+        } catch (e) {
+          showSaveBar('Sync error — check config');
+          console.error(e);
+        }
+      }, 600);
+    };
+
+    // Listen for remote changes and push into the app
+    onSnapshot(docRef, (snap) => {
+      if (!snap.exists()) return;
+      remoteUpdateInProgress = true;
+      window._applyRemoteState(snap.data());
+      remoteUpdateInProgress = false;
+    });
+
+    window._isRemoteUpdate = () => remoteUpdateInProgress;
+
+    function showSaveBar(msg) {
+      const bar = document.getElementById('saveBar');
+      if (!bar) return;
+      bar.textContent = msg;
+      bar.classList.add('show');
+      setTimeout(() => bar.classList.remove('show'), 2000);
+    }
+  </script>
+  <style>
+    :root {
+      --ink: #1a1208;
+      --ink2: #3d2e18;
+      --ink3: #7a6040;
+      --parchment: #f5ead6;
+      --parchment2: #ede0c4;
+      --parchment3: #e0ceaf;
+      --gold: #b8860b;
+      --gold2: #d4a017;
+      --red: #8b1a1a;
+      --green: #1a5c2a;
+      --border: rgba(90, 60, 20, 0.18);
+      --border2: rgba(90, 60, 20, 0.32);
+      --shadow: 0 2px 12px rgba(30, 15, 0, 0.10);
+      --radius: 6px;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-body: 'Crimson Pro', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #2a1f0e;
+      background-image:
+        radial-gradient(ellipse at 20% 10%, rgba(100, 60, 10, 0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 90%, rgba(60, 30, 5, 0.4) 0%, transparent 50%);
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--ink);
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      padding: 2rem 1rem 1.5rem;
+      border-bottom: 1px solid rgba(180, 130, 40, 0.3);
+    }
+
+    .header-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: var(--gold2);
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    header h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 5vw, 2.6rem);
+      color: var(--parchment);
+      font-weight: 700;
+      line-height: 1.1;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+
+    header h1 em {
+      display: block;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 0.65em;
+      color: var(--gold2);
+      letter-spacing: 0.04em;
+    }
+
+    .case-name-bar {
+      margin: 1rem auto 0;
+      max-width: 500px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(245, 234, 214, 0.08);
+      border: 1px solid rgba(180, 130, 40, 0.3);
+      border-radius: 4px;
+      padding: 0.4rem 0.75rem;
+    }
+
+    .case-name-bar label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--gold2);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .case-name-bar input {
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: var(--font-display);
+      font-size: 1rem;
+      color: var(--parchment);
+      width: 100%;
+      font-style: italic;
+    }
+
+    .case-name-bar input::placeholder {
+      color: rgba(245, 234, 214, 0.3);
+    }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1rem 0.75rem 4rem;
+    }
+
+    /* ── Section ── */
+    .section {
+      background: var(--parchment);
+      border-radius: 8px;
+      border: 1px solid var(--parchment3);
+      box-shadow: var(--shadow);
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.7rem 1rem;
+      background: var(--parchment2);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      gap: 0.5rem;
+    }
+
+    .section-header:active {
+      background: var(--parchment3);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .section-icon {
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    .section-header h2 {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--ink2);
+    }
+
+    .section-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: var(--gold);
+      color: white;
+      border-radius: 99px;
+      padding: 1px 7px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    .section-chevron {
+      font-size: 0.7rem;
+      color: var(--ink3);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+
+    .section.collapsed .section-chevron {
+      transform: rotate(-90deg);
+    }
+
+    .section-body {
+      padding: 0.75rem;
+    }
+
+    .section.collapsed .section-body {
+      display: none;
+    }
+
+    /* ── Cards in sections ── */
+    .add-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+      padding: 0.45rem 0.75rem;
+      border: 1px dashed var(--border2);
+      background: transparent;
+      border-radius: var(--radius);
+      color: var(--gold);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      width: 100%;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .add-btn:hover {
+      background: rgba(184, 134, 11, 0.07);
+      border-color: var(--gold);
+    }
+
+    /* ── Suspect card ── */
+    .suspect-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.5rem;
+      position: relative;
+    }
+
+    .suspect-card .row1 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .suspect-card .status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .status-btn {
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid transparent;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-weight: 500;
+    }
+
+    .status-btn.suspect {
+      background: #fdecea;
+      color: var(--red);
+      border-color: rgba(139, 26, 26, 0.2);
+    }
+
+    .status-btn.unknown {
+      background: #f3f0ea;
+      color: var(--ink3);
+      border-color: var(--border);
+    }
+
+    .status-btn.cleared {
+      background: #eaf4ea;
+      color: var(--green);
+      border-color: rgba(26, 92, 42, 0.2);
+    }
+
+    .status-btn.active {
+      outline: 2px solid currentColor;
+      outline-offset: 1px;
+    }
+
+    .delete-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: none;
+      border: none;
+      color: var(--ink3);
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 2px 4px;
+      line-height: 1;
+      border-radius: 3px;
+      opacity: 0.5;
+    }
+
+    .delete-btn:hover {
+      opacity: 1;
+      background: #fdecea;
+      color: var(--red);
+    }
+
+    /* ── Form fields ── */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .field-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      color: var(--ink3);
+      text-transform: uppercase;
+    }
+
+    input[type=text],
+    textarea,
+    select {
+      font-family: var(--font-body);
+      font-size: 0.92rem;
+      color: var(--ink);
+      background: var(--parchment);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 5px 8px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s;
+    }
+
+    input[type=text]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--gold);
+      background: white;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 56px;
+    }
+
+    /* ── Clue card ── */
+    .clue-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: var(--radius);
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.5rem;
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .clue-card .full {
+      grid-column: 1 / -1;
+    }
+
+    .clue-type-physical {
+      border-left-color: #1a5c8b;
+    }
+
+    .clue-type-testimony {
+      border-left-color: #7b4ea6;
+    }
+
+    .clue-type-document {
+      border-left-color: var(--gold);
+    }
+
+    .clue-type-alibi {
+      border-left-color: var(--green);
+    }
+
+    /* ── Timeline ── */
+    .timeline-entry {
+      display: flex;
+      gap: 0.6rem;
+      margin-bottom: 0.5rem;
+      align-items: flex-start;
+    }
+
+    .timeline-entry .tl-dot-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 8px;
+    }
+
+    .tl-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--gold);
+      flex-shrink: 0;
+    }
+
+    .tl-line {
+      width: 1px;
+      flex: 1;
+      background: var(--border2);
+      min-height: 20px;
+      margin-top: 3px;
+    }
+
+    .tl-fields {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 0.4rem;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.5rem 0.6rem;
+    }
+
+    /* ── Question list ── */
+    .question-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.55rem 0.75rem;
+      margin-bottom: 0.45rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+      position: relative;
+    }
+
+    .resolved-toggle {
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--border2);
+      background: var(--parchment);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      color: var(--ink3);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .resolved-toggle.resolved {
+      background: #eaf4ea;
+      color: var(--green);
+      border-color: rgba(26, 92, 42, 0.25);
+    }
+
+    .question-card.resolved-card input {
+      text-decoration: line-through;
+      color: var(--ink3);
+    }
+
+    /* ── Lead card ── */
+    .lead-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.45rem;
+      position: relative;
+    }
+
+    .lead-num {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: var(--gold);
+      float: left;
+      margin-right: 0.5rem;
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    .lead-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+      margin-top: 0.4rem;
+    }
+
+    /* ── Theory card ── */
+    .theory-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.45rem;
+      position: relative;
+    }
+
+    .theory-card .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .conf-pills {
+      display: flex;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+    }
+
+    .conf-pill {
+      padding: 2px 9px;
+      border-radius: 99px;
+      border: 1px solid var(--border2);
+      background: var(--parchment);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      color: var(--ink3);
+    }
+
+    .conf-pill.active {
+      background: var(--gold);
+      color: white;
+      border-color: var(--gold);
+    }
+
+    /* ── Score / verdict ── */
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .score-box {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.7rem;
+      text-align: center;
+    }
+
+    .score-box .slabel {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--ink3);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .score-box input {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--gold);
+      background: transparent;
+      border: none;
+      outline: none;
+      width: 100%;
+      text-align: center;
+      padding: 0;
+    }
+
+    /* ── Case overview ── */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+
+    @media (max-width: 480px) {
+
+      .overview-grid,
+      .suspect-card .row1,
+      .clue-card,
+      .tl-fields,
+      .lead-fields,
+      .theory-card .row,
+      .score-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .clue-card {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    /* ── Save indicator ── */
+    .save-bar {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 20, 5, 0.92);
+      color: var(--gold2);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 0.4rem 1rem;
+      border-radius: 99px;
+      border: 1px solid rgba(180, 130, 40, 0.3);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    .save-bar.show {
+      opacity: 1;
+    }
+
+    /* ── Share banner ── */
+    .share-banner {
+      background: rgba(245, 234, 214, 0.07);
+      border: 1px solid rgba(180, 130, 40, 0.25);
+      border-radius: 6px;
+      padding: 0.6rem 0.9rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: rgba(245, 234, 214, 0.6);
+      letter-spacing: 0.05em;
+    }
+
+    .share-banner strong {
+      color: var(--gold2);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="header-eyebrow">Baker Street Irregulars</div>
+    <h1>Consulting Detective<em>Case Workspace</em></h1>
+    <div class="case-name-bar">
+      <label>Case:</label>
+      <input type="text" id="caseName" placeholder="The Affair of the ___________" />
+    </div>
+  </header>
+
+  <main>
+    <div class="share-banner" id="syncBanner">
+      🔴 <strong>Not connected</strong> — add your Firebase config to index.html to enable live sync.
+    </div>
+
+    <!-- 1. Overview -->
+    <div class="section" id="sec-overview">
+      <div class="section-header" onclick="toggleSection('sec-overview')">
+        <div class="section-title"><span class="section-icon">📋</span>
+          <h2>Case Overview</h2>
+        </div>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body">
+        <div class="overview-grid">
+          <div class="field-group">
+            <span class="field-label">Date played</span>
+            <input type="text" id="datePlayed" placeholder="e.g. Saturday 26 Apr" />
+          </div>
+          <div class="field-group">
+            <span class="field-label">Players</span>
+            <input type="text" id="players" placeholder="e.g. Shuyang, Wei, Fang…" />
+          </div>
+        </div>
+        <div class="field-group" style="margin-top:0.5rem">
+          <span class="field-label">Opening summary</span>
+          <textarea id="summary" placeholder="Paste or type the case intro here…" style="min-height:90px"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Suspects -->
+    <div class="section" id="sec-suspects">
+      <div class="section-header" onclick="toggleSection('sec-suspects')">
+        <div class="section-title"><span class="section-icon">🎭</span>
+          <h2>Suspects</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="section-badge" id="badge-suspects">0</span>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="suspects-list"></div>
+        <button class="add-btn" onclick="addSuspect()">+ Add suspect</button>
+      </div>
+    </div>
+
+    <!-- 3. Clues -->
+    <div class="section" id="sec-clues">
+      <div class="section-header" onclick="toggleSection('sec-clues')">
+        <div class="section-title"><span class="section-icon">🔍</span>
+          <h2>Clues & Evidence</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="section-badge" id="badge-clues">0</span>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="clues-list"></div>
+        <button class="add-btn" onclick="addClue()">+ Add clue</button>
+      </div>
+    </div>
+
+    <!-- 4. Timeline -->
+    <div class="section collapsed" id="sec-timeline">
+      <div class="section-header" onclick="toggleSection('sec-timeline')">
+        <div class="section-title"><span class="section-icon">🕰</span>
+          <h2>Timeline of Events</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="section-badge" id="badge-timeline">0</span>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="timeline-list"></div>
+        <button class="add-btn" onclick="addTimeline()">+ Add event</button>
+      </div>
+    </div>
+
+    <!-- 5. Open Questions -->
+    <div class="section collapsed" id="sec-questions">
+      <div class="section-header" onclick="toggleSection('sec-questions')">
+        <div class="section-title"><span class="section-icon">❓</span>
+          <h2>Open Questions</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="section-badge" id="badge-questions">0</span>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="questions-list"></div>
+        <button class="add-btn" onclick="addQuestion()">+ Add question</button>
+      </div>
+    </div>
+
+    <!-- 6. Leads Visited -->
+    <div class="section collapsed" id="sec-leads">
+      <div class="section-header" onclick="toggleSection('sec-leads')">
+        <div class="section-title"><span class="section-icon">🗺</span>
+          <h2>Leads Visited</h2>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="section-badge" id="badge-leads">0</span>
+          <span class="section-chevron">▼</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="leads-list"></div>
+        <button class="add-btn" onclick="addLead()">+ Add lead</button>
+      </div>
+    </div>
+
+    <!-- 7. Player Theories -->
+    <div class="section collapsed" id="sec-theories">
+      <div class="section-header" onclick="toggleSection('sec-theories')">
+        <div class="section-title"><span class="section-icon">🧠</span>
+          <h2>Player Theories</h2>
+        </div>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body">
+        <div id="theories-list"></div>
+        <button class="add-btn" onclick="addTheory()">+ Add player</button>
+      </div>
+    </div>
+
+    <!-- 8. Verdict -->
+    <div class="section collapsed" id="sec-verdict">
+      <div class="section-header" onclick="toggleSection('sec-verdict')">
+        <div class="section-title"><span class="section-icon">⚖️</span>
+          <h2>Final Verdict & Score</h2>
+        </div>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body">
+        <div class="score-grid">
+          <div class="field-group">
+            <span class="field-label">We accuse</span>
+            <input type="text" id="accused" placeholder="Name…" />
+          </div>
+          <div class="field-group">
+            <span class="field-label">Motive</span>
+            <input type="text" id="motive" placeholder="Because…" />
+          </div>
+        </div>
+        <div class="score-grid">
+          <div class="score-box">
+            <span class="slabel">Our score</span>
+            <input type="text" id="ourScore" placeholder="—" />
+          </div>
+          <div class="score-box">
+            <span class="slabel">Holmes's score</span>
+            <input type="text" id="holmesScore" placeholder="—" />
+          </div>
+        </div>
+        <div class="field-group">
+          <span class="field-label">What we missed / post-game notes</span>
+          <textarea id="postNotes" placeholder="What did Holmes spot that we didn't?"
+            style="min-height:72px"></textarea>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="save-bar" id="saveBar">Saved</div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    let state = {
+      caseName: '', datePlayed: '', players: '', summary: '',
+      accused: '', motive: '', ourScore: '', holmesScore: '', postNotes: '',
+      suspects: [], clues: [], timeline: [], questions: [], leads: [], theories: []
+    };
+
+    // Deep-merge remote state into local and re-render only changed lists
+    window._applyRemoteState = function (remote) {
+      const prev = JSON.stringify(state);
+      state = {...state, ...remote};
+      if (JSON.stringify(state) === prev) return; // no change
+
+      // Re-bind simple fields without stealing focus
+      Object.keys(remote).forEach(k => {
+        const el = document.getElementById(k);
+        if (el && el !== document.activeElement) el.value = state[k] || '';
+      });
+
+      renderSuspects(); renderClues(); renderTimeline();
+      renderQuestions(); renderLeads(); renderTheories();
+
+      const banner = document.getElementById('syncBanner');
+      if (banner) {
+        banner.innerHTML = '🟢 <strong>Live sync active</strong> — all players see edits in real time. Room: <code style="color:var(--gold2)">' + (window._ROOM || '') + '</code>';
+      }
+    };
+
+    function save() {
+      if (window._isRemoteUpdate && window._isRemoteUpdate()) return;
+      if (window._firebaseSave) {
+        window._firebaseSave(state);
+      } else {
+        // Fallback: localStorage while Firebase not yet configured
+        try {localStorage.setItem('cd_workspace_v1', JSON.stringify(state));} catch (e) { }
+        const bar = document.getElementById('saveBar');
+        if (bar) {bar.textContent = 'Saved locally'; bar.classList.add('show'); setTimeout(() => bar.classList.remove('show'), 1500);}
+      }
+    }
+
+    // ── Section toggle ─────────────────────────────────────────────────────────
+    function toggleSection(id) {
+      document.getElementById(id).classList.toggle('collapsed');
+    }
+
+    // ── Bind simple fields ─────────────────────────────────────────────────────
+    function bindField(id, key) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = state[key] || '';
+      el.addEventListener('input', () => {state[key] = el.value; save();});
+    }
+
+    // ── Render helpers ─────────────────────────────────────────────────────────
+    function uid() {return Math.random().toString(36).slice(2, 8);}
+
+    function updateBadge(id, count) {
+      const el = document.getElementById('badge-' + id);
+      if (el) el.textContent = count;
+    }
+
+    // ── Suspects ───────────────────────────────────────────────────────────────
+    function renderSuspects() {
+      const list = document.getElementById('suspects-list');
+      list.innerHTML = '';
+      state.suspects.forEach((s, i) => {
+        const d = document.createElement('div');
+        d.className = 'suspect-card';
+        d.innerHTML = `
+      <button class="delete-btn" onclick="deleteSuspect(${i})" title="Remove">✕</button>
+      <div class="row1">
+        <div class="field-group">
+          <span class="field-label">Name</span>
+          <input type="text" value="${esc(s.name)}" placeholder="Full name" onchange="updateSuspect(${i},'name',this.value)" />
+        </div>
+        <div class="field-group">
+          <span class="field-label">Role / relation</span>
+          <input type="text" value="${esc(s.role)}" placeholder="e.g. Business partner" onchange="updateSuspect(${i},'role',this.value)" />
+        </div>
+      </div>
+      <div class="status-row">
+        <span class="field-label" style="margin-right:4px">Status:</span>
+        <button class="status-btn suspect ${s.status === 'suspect' ? 'active' : ''}" onclick="setStatus(${i},'suspect')">🔴 Suspect</button>
+        <button class="status-btn unknown ${s.status === 'unknown' ? 'active' : ''}" onclick="setStatus(${i},'unknown')">⚪ Unknown</button>
+        <button class="status-btn cleared ${s.status === 'cleared' ? 'active' : ''}" onclick="setStatus(${i},'cleared')">🟢 Cleared</button>
+      </div>
+      <div class="field-group">
+        <span class="field-label">Notes & alibi</span>
+        <textarea placeholder="Motive, alibi, connections…" onchange="updateSuspect(${i},'notes',this.value)">${esc(s.notes)}</textarea>
+      </div>`;
+        list.appendChild(d);
+      });
+      updateBadge('suspects', state.suspects.length);
+    }
+    function addSuspect() {
+      state.suspects.push({id: uid(), name: '', role: '', status: 'unknown', notes: ''});
+      renderSuspects(); save();
+    }
+    function deleteSuspect(i) {state.suspects.splice(i, 1); renderSuspects(); save();}
+    function updateSuspect(i, k, v) {state.suspects[i][k] = v; save();}
+    function setStatus(i, s) {state.suspects[i].status = s; renderSuspects(); save();}
+
+    // ── Clues ──────────────────────────────────────────────────────────────────
+    const CLUE_TYPES = ['Physical', 'Testimony', 'Document', 'Alibi'];
+    function renderClues() {
+      const list = document.getElementById('clues-list');
+      list.innerHTML = '';
+      state.clues.forEach((c, i) => {
+        const d = document.createElement('div');
+        d.className = `clue-card clue-type-${(c.type || 'document').toLowerCase()}`;
+        d.innerHTML = `
+      <button class="delete-btn" style="grid-column:1/-1;justify-self:end" onclick="deleteClue(${i})">✕</button>
+      <div class="field-group">
+        <span class="field-label">Type</span>
+        <select onchange="updateClue(${i},'type',this.value);renderClues()">
+          ${CLUE_TYPES.map(t => `<option value="${t}" ${c.type === t ? 'selected' : ''}>${typeEmoji(t)} ${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-group">
+        <span class="field-label">Links to suspect / lead</span>
+        <input type="text" value="${esc(c.link)}" placeholder="Name or lead #" onchange="updateClue(${i},'link',this.value)" />
+      </div>
+      <div class="field-group full">
+        <span class="field-label">Description</span>
+        <textarea placeholder="What was found / said?" onchange="updateClue(${i},'desc',this.value)">${esc(c.desc)}</textarea>
+      </div>`;
+        list.appendChild(d);
+      });
+      updateBadge('clues', state.clues.length);
+    }
+    function typeEmoji(t) {return {Physical: '📦', Testimony: '💬', Document: '📄', Alibi: '🗺️'}[t] || '🔍';}
+    function addClue() {state.clues.push({id: uid(), type: 'Physical', desc: '', link: ''}); renderClues(); save();}
+    function deleteClue(i) {state.clues.splice(i, 1); renderClues(); save();}
+    function updateClue(i, k, v) {state.clues[i][k] = v; save();}
+
+    // ── Timeline ───────────────────────────────────────────────────────────────
+    function renderTimeline() {
+      const list = document.getElementById('timeline-list');
+      list.innerHTML = '';
+      state.timeline.forEach((e, i) => {
+        const d = document.createElement('div');
+        d.className = 'timeline-entry';
+        d.innerHTML = `
+      <div class="tl-dot-col"><div class="tl-dot"></div><div class="tl-line"></div></div>
+      <div class="tl-fields" style="position:relative">
+        <button class="delete-btn" style="position:absolute;top:4px;right:4px" onclick="deleteTimeline(${i})">✕</button>
+        <div class="field-group">
+          <span class="field-label">Time</span>
+          <input type="text" value="${esc(e.time)}" placeholder="e.g. Tue 10 pm" onchange="updateTimeline(${i},'time',this.value)" />
+        </div>
+        <div class="field-group">
+          <span class="field-label">Event</span>
+          <input type="text" value="${esc(e.event)}" placeholder="What happened?" onchange="updateTimeline(${i},'event',this.value)" />
+        </div>
+      </div>`;
+        list.appendChild(d);
+      });
+      updateBadge('timeline', state.timeline.length);
+    }
+    function addTimeline() {state.timeline.push({id: uid(), time: '', event: ''}); renderTimeline(); save();}
+    function deleteTimeline(i) {state.timeline.splice(i, 1); renderTimeline(); save();}
+    function updateTimeline(i, k, v) {state.timeline[i][k] = v; save();}
+
+    // ── Questions ──────────────────────────────────────────────────────────────
+    function renderQuestions() {
+      const list = document.getElementById('questions-list');
+      list.innerHTML = '';
+      state.questions.forEach((q, i) => {
+        const d = document.createElement('div');
+        d.className = `question-card${q.resolved ? ' resolved-card' : ''}`;
+        d.innerHTML = `
+      <div class="field-group" style="flex:1">
+        <input type="text" value="${esc(q.text)}" placeholder="What do we still need to find out?" onchange="updateQuestion(${i},'text',this.value)" style="${q.resolved ? 'text-decoration:line-through;color:var(--ink3)' : ''}" />
+      </div>
+      <div style="display:flex;gap:0.35rem;align-items:center">
+        <button class="resolved-toggle ${q.resolved ? 'resolved' : ''}" onclick="toggleQuestion(${i})">${q.resolved ? '✓ Done' : 'Open'}</button>
+        <button class="delete-btn" style="position:static;opacity:0.4" onclick="deleteQuestion(${i})">✕</button>
+      </div>`;
+        list.appendChild(d);
+      });
+      const open = state.questions.filter(q => !q.resolved).length;
+      updateBadge('questions', open);
+    }
+    function addQuestion() {state.questions.push({id: uid(), text: '', resolved: false}); renderQuestions(); save();}
+    function deleteQuestion(i) {state.questions.splice(i, 1); renderQuestions(); save();}
+    function updateQuestion(i, k, v) {state.questions[i][k] = v; save();}
+    function toggleQuestion(i) {state.questions[i].resolved = !state.questions[i].resolved; renderQuestions(); save();}
+
+    // ── Leads ──────────────────────────────────────────────────────────────────
+    function renderLeads() {
+      const list = document.getElementById('leads-list');
+      list.innerHTML = '';
+      state.leads.forEach((l, i) => {
+        const d = document.createElement('div');
+        d.className = 'lead-card';
+        d.innerHTML = `
+      <button class="delete-btn" onclick="deleteLead(${i})">✕</button>
+      <span class="lead-num">${i + 1}</span>
+      <div class="field-group">
+        <span class="field-label">Location / Person visited</span>
+        <input type="text" value="${esc(l.location)}" placeholder="e.g. Scotland Yard" onchange="updateLead(${i},'location',this.value)" />
+      </div>
+      <div class="lead-fields">
+        <div class="field-group">
+          <span class="field-label">Key finding</span>
+          <textarea placeholder="What did you learn?" onchange="updateLead(${i},'finding',this.value)" style="min-height:52px">${esc(l.finding)}</textarea>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Clue #s found</span>
+          <input type="text" value="${esc(l.clues)}" placeholder="e.g. 3, 7" onchange="updateLead(${i},'clues',this.value)" />
+        </div>
+      </div>`;
+        list.appendChild(d);
+      });
+      updateBadge('leads', state.leads.length);
+    }
+    function addLead() {state.leads.push({id: uid(), location: '', finding: '', clues: ''}); renderLeads(); save();}
+    function deleteLead(i) {state.leads.splice(i, 1); renderLeads(); save();}
+    function updateLead(i, k, v) {state.leads[i][k] = v; save();}
+
+    // ── Theories ───────────────────────────────────────────────────────────────
+    function renderTheories() {
+      const list = document.getElementById('theories-list');
+      list.innerHTML = '';
+      state.theories.forEach((t, i) => {
+        const d = document.createElement('div');
+        d.className = 'theory-card';
+        d.innerHTML = `
+      <button class="delete-btn" onclick="deleteTheory(${i})">✕</button>
+      <div class="row">
+        <div class="field-group">
+          <span class="field-label">Player</span>
+          <input type="text" value="${esc(t.player)}" placeholder="Name" onchange="updateTheory(${i},'player',this.value)" />
+        </div>
+        <div class="field-group">
+          <span class="field-label">Accuses</span>
+          <input type="text" value="${esc(t.suspect)}" placeholder="Suspect name" onchange="updateTheory(${i},'suspect',this.value)" />
+        </div>
+      </div>
+      <div class="field-group" style="margin-bottom:0.4rem">
+        <span class="field-label">Reasoning</span>
+        <textarea placeholder="Because…" onchange="updateTheory(${i},'reason',this.value)" style="min-height:48px">${esc(t.reason)}</textarea>
+      </div>
+      <div class="field-group">
+        <span class="field-label">Confidence</span>
+        <div class="conf-pills">
+          ${['Low', 'Medium', 'High'].map(c => `<button class="conf-pill ${t.conf === c ? 'active' : ''}" onclick="setConf(${i},'${c}')">${c}</button>`).join('')}
+        </div>
+      </div>`;
+        list.appendChild(d);
+      });
+    }
+    function addTheory() {state.theories.push({id: uid(), player: '', suspect: '', reason: '', conf: ''}); renderTheories(); save();}
+    function deleteTheory(i) {state.theories.splice(i, 1); renderTheories(); save();}
+    function updateTheory(i, k, v) {state.theories[i][k] = v; save();}
+    function setConf(i, c) {state.theories[i].conf = c; renderTheories(); save();}
+
+    // ── Util ───────────────────────────────────────────────────────────────────
+    function esc(s) {return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');}
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    bindField('caseName', 'caseName');
+    bindField('datePlayed', 'datePlayed');
+    bindField('players', 'players');
+    bindField('summary', 'summary');
+    bindField('accused', 'accused');
+    bindField('motive', 'motive');
+    bindField('ourScore', 'ourScore');
+    bindField('holmesScore', 'holmesScore');
+    bindField('postNotes', 'postNotes');
+    renderSuspects();
+    renderClues();
+    renderTimeline();
+    renderQuestions();
+    renderLeads();
+    renderTheories();
+  </script>
+</body>
+
+</html>
